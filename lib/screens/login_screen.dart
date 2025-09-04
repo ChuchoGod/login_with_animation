@@ -45,7 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   hintText: "Password",
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
-                    // ← nuevo
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility_off
