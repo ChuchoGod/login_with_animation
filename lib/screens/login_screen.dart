@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
+//3.1 Importar librería de Timer
+import 'dart:async';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,16 +15,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Cerebro de la lógica de las animaciones
   StateMachineController?
-  controller; // El ? sirve para verificar que la variable no sea nulo
+      controller; // El ? sirve para verificar que la variable no sea nulo
   // SMI: State Machine Input
   SMIBool? isChecking; // Activa la movilidad de los ojos
   SMIBool? isHandsUp; // Se tapa los ojos
   SMITrigger? trigSuccess; // Se emociona
   SMITrigger? trigFail; // Se pone triste
 
-  // 1) FocusNode (Nodo donde esta el foco)
+  //2.1 Seguimiento de la cabeza
+  SMINumber? numLook; // Sigue el cursor
+
+  // 1.1) FocusNode (Nodo donde esta el foco)
   final emailFocus = FocusNode();
   final passFocus = FocusNode();
+
+  //3.2 Timer para detemrinar cuando dejó de escribir
+  Timer? _typingDebounce;
 
   // 2) Listeners (Oyentes, escuchadores)
   @override
@@ -30,6 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     emailFocus.addListener(() {
       if (emailFocus.hasFocus) {
+        isHandsUp?.change(false); // Manos abajo en email
+        // 2.2 Seguir el cursor en email
+        numLook?.value = 50.0;
         isHandsUp?.change(false); // Manos abajo en email
       }
     });
@@ -74,6 +85,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     isHandsUp = controller!.findSMI('isHandsUp');
                     trigSuccess = controller!.findSMI('trigSuccess');
                     trigFail = controller!.findSMI('trigFail');
+                    // 2.3 Enlazar el seguimiento de la cabeza
+                    numLook = controller!.findSMI('numLook');
                   },
                 ),
               ),
@@ -84,8 +97,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 focusNode: emailFocus, // Asiganas el focusNode al TextField
                 onChanged: (value) {
                   if (isHandsUp != null) {
-                    // No subir tapar los ojos al escribir el Email
-                    // isHandsUp!.change(false);
+                    //2.4 Seguir el cursor en email
+                    //"Esta escribiendo en email"
+                    isChecking!.change(true);
+
+                    //Ajustar el seguimiento de la cabeza
+                    final look = (value.length / 80.0 * 100.0).clamp(
+                      0.0,
+                      100.0);
+                    numLook?.value = look;
+
+                    //3.3 Debounce: si vuelve a escribir, reinicia el timer
+                    if (_typingDebounce?.isActive ?? false) _typingDebounce?.cancel();
+                    _typingDebounce = Timer(const Duration(seconds: 3), () {
+                      if (!mounted){
+                        return;
+                      }
+                      // "Dejó de escribir en email"
+                      isChecking?.change(false);
+                    });
                   }
                   // Si es nulo no intenta cargar la animación
                   if (isChecking == null) return;
@@ -200,6 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     emailFocus.dispose();
     passFocus.dispose();
+    _typingDebounce?.cancel();
     super.dispose();
   }
 }
