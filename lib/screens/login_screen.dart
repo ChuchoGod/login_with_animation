@@ -25,12 +25,67 @@ class _LoginScreenState extends State<LoginScreen> {
   //2.1 Seguimiento de la cabeza
   SMINumber? numLook; // Sigue el cursor
 
-  // 1.1) FocusNode (Nodo donde esta el foco)
+  // 1.1 FocusNode (Nodo donde esta el foco)
   final emailFocus = FocusNode();
   final passFocus = FocusNode();
 
   //3.2 Timer para detemrinar cuando dejó de escribir
   Timer? _typingDebounce;
+
+  //4.1 Controllers
+  final emailCtrl = TextEditingController();
+  final passCtrl = TextEditingController();
+
+  // 4.2 Errores para mostrar en la UI
+  String? emailError;
+  String? passError;
+
+  // 4.3 Validar los campos
+  bool isValidEmail(String email) {
+    final re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+    return re.hasMatch(email);
+  }
+
+  bool isValidPassword(String pass) {
+    // mínimo 8, una mayúscula, una minúscula, un dígito y un especial
+    final re = RegExp(
+      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$',
+    );
+    return re.hasMatch(pass);
+  }
+
+  // 4.4 Validar al presionar el botón
+  void _onLogin() {
+    final email = emailCtrl.text.trim();
+    final pass = passCtrl.text.trim();
+
+    //Recalcular errores
+    final eError =
+        isValidEmail(email) ? null : 'Email invalido. Por favor ingrese un email válido.';
+    final pError =
+        isValidPassword(pass) ? null : 'La contraseña debe tener al menos 8 caracteres, incluir una letra mayúscula, una letra minúscula, un dígito y un carácter especial.';
+
+    //4.5 Para avisar que hubo cambios en la UI
+    setState(() {
+      emailError = eError;
+      passError = pError;
+    });
+    //4.6 Cerrar el teclado
+    FocusScope.of(context).unfocus();
+    _typingDebounce?.cancel();
+    isChecking?.change(false);
+    isHandsUp?.change(false);
+    numLook?.value = 50.0; // Mirar al frente
+
+    //4.7 Activar triggers
+    if (eError == null && pError == null) {
+      trigSuccess?.fire();
+    } else {
+      trigFail?.fire();
+    }
+  }
+
+
 
   // 2) Listeners (Oyentes, escuchadores)
   @override
@@ -95,8 +150,9 @@ class _LoginScreenState extends State<LoginScreen> {
               // Campo de texto del Email
               TextField(
                 focusNode: emailFocus, // Asiganas el focusNode al TextField
+                //4.8 Controllers
+                controller: emailCtrl,
                 onChanged: (value) {
-                  if (isHandsUp != null) {
                     //2.4 Seguir el cursor en email
                     //"Esta escribiendo en email"
                     isChecking!.change(true);
@@ -116,7 +172,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       // "Dejó de escribir en email"
                       isChecking?.change(false);
                     });
-                  }
                   // Si es nulo no intenta cargar la animación
                   if (isChecking == null) return;
                   // Activa el seguimiento de los ojos
@@ -125,6 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Para que aparezca el @ en móviles UI/UX
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
+                  errorText: emailError, // Mostrar el error
                   hintText: "Email",
                   prefixIcon: const Icon(Icons.email),
                   border: OutlineInputBorder(
@@ -138,6 +194,8 @@ class _LoginScreenState extends State<LoginScreen> {
               // Campo de texto de la contraseña
               TextField(
                 focusNode: passFocus, // Asiganas el focusNode al TextField
+                //4.9 Controllers
+                controller: passCtrl,
                 onChanged: (value) {
                   if (isChecking != null) {
                     // Tapar los ojos al escribir el Email
@@ -153,6 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Para que aparezca el @ en móviles UI/UX
                 keyboardType: TextInputType.visiblePassword,
                 decoration: InputDecoration(
+                  errorText: passError, // Mostrar el error
                   hintText: "Password",
                   prefixIcon: const Icon(Icons.lock),
                   suffixIcon: IconButton(
@@ -192,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                onPressed: () {},
+                onPressed: _onLogin,
                 child: Text("Login", style: TextStyle(color: Colors.white)),
               ),
               const SizedBox(height: 10),
@@ -228,6 +287,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // 4) Liberación de recursos / limpieza de focos
   @override
   void dispose() {
+    emailCtrl.dispose();
+    passCtrl.dispose();
     emailFocus.dispose();
     passFocus.dispose();
     _typingDebounce?.cancel();
