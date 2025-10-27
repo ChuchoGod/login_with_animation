@@ -12,6 +12,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isObscure = true; // Estado inicial
+  bool _isLoading = false; // Estado de carga para el botón
 
   // Cerebro de la lógica de las animaciones
   StateMachineController?
@@ -36,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailCtrl = TextEditingController();
   final passCtrl = TextEditingController();
 
-  // 4.2 Errores para mostrar en la UI
+  // 4.2 Errores para mostrar en la UI (solo el primer error relevante)
   String? emailError;
   String? passError;
 
@@ -54,43 +55,98 @@ class _LoginScreenState extends State<LoginScreen> {
     return re.hasMatch(pass);
   }
 
-  // 4.4 Validar al presionar el botón
-  void _onLogin() {
+  // 4.3.1 Validación dinámica - devuelve el PRIMER error aplicable o null
+  String? _validateEmail(String email) {
+    if (email.isEmpty) return null; // No mostrar error si está vacío
+    if (!isValidEmail(email)) return 'Email inválido';
+    return null;
+  }
+
+  String? _validatePassword(String pass) {
+    if (pass.isEmpty) return null; // No mostrar nada si está vacío
+    if (pass.length < 8) return 'Mínimo 8 caracteres';
+    if (!RegExp(r'[A-Z]').hasMatch(pass)) return 'Falta una mayúscula';
+    if (!RegExp(r'[a-z]').hasMatch(pass)) return 'Falta una minúscula';
+    if (!RegExp(r'\d').hasMatch(pass)) return 'Falta un dígito';
+    if (!RegExp(r'[^A-Za-z0-9]').hasMatch(pass))
+      return 'Falta un carácter especial';
+    return null;
+  }
+
+  // 4.3.2 Actualizar errores en vivo
+  void _updateEmailError() {
+    setState(() {
+      emailError = _validateEmail(emailCtrl.text.trim());
+    });
+  }
+
+  void _updatePasswordError() {
+    setState(() {
+      passError = _validatePassword(passCtrl.text.trim());
+    });
+  }
+
+  // 4.4 Validar al presionar el botón (FIX: doble tap)
+  Future<void> _onLogin() async {
+    if (_isLoading) return; // Evitar spam del botón
+
     final email = emailCtrl.text.trim();
     final pass = passCtrl.text.trim();
 
-    //Recalcular errores
-    final eError =
-        isValidEmail(email) ? null : 'Email invalido. Por favor ingrese un email válido.';
-    final pError =
-        isValidPassword(pass) ? null : 'La contraseña debe tener al menos 8 caracteres, incluir una letra mayúscula, una letra minúscula, un dígito y un carácter especial.';
+    // Validar campos (ahora muestra error aunque esté vacío al enviar)
+    final eError = email.isEmpty
+        ? 'El email es requerido'
+        : (isValidEmail(email) ? null : 'Email inválido');
+    final pError = pass.isEmpty
+        ? 'La contraseña es requerida'
+        : (isValidPassword(pass) ? null : _validatePassword(pass));
 
-    //4.5 Para avisar que hubo cambios en la UI
+    // Actualizar UI con errores
     setState(() {
       emailError = eError;
       passError = pError;
+      _isLoading = true; // Activar estado de carga
     });
-    //4.6 Cerrar el teclado
+
+    // 1. Cerrar teclado y normalizar estado de la animación
     FocusScope.of(context).unfocus();
     _typingDebounce?.cancel();
     isChecking?.change(false);
     isHandsUp?.change(false);
     numLook?.value = 50.0; // Mirar al frente
 
-    //4.7 Activar triggers
+    // 2. Esperar un frame para que la State Machine procese los cambios
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    // 3. Simular delay de red (~1s)
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    // 4. Disparar el trigger correspondiente
     if (eError == null && pError == null) {
       trigSuccess?.fire();
     } else {
       trigFail?.fire();
     }
+
+    // 5. Desactivar estado de carga
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
-
-
 
   // 2) Listeners (Oyentes, escuchadores)
   @override
   void initState() {
     super.initState();
+
+    // Listener de validación en vivo para email
+    emailCtrl.addListener(_updateEmailError);
+
+    // Listener de validación en vivo para password
+    passCtrl.addListener(_updatePasswordError);
+
     emailFocus.addListener(() {
       if (emailFocus.hasFocus) {
         isHandsUp?.change(false); // Manos abajo en email
@@ -153,25 +209,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 //4.8 Controllers
                 controller: emailCtrl,
                 onChanged: (value) {
-                    //2.4 Seguir el cursor en email
-                    //"Esta escribiendo en email"
-                    isChecking!.change(true);
+                  //2.4 Seguir el cursor en email
+                  //"Esta escribiendo en email"
+                  isChecking!.change(true);
 
-                    //Ajustar el seguimiento de la cabeza
-                    final look = (value.length / 80.0 * 100.0).clamp(
-                      0.0,
-                      100.0);
-                    numLook?.value = look;
+                  //Ajustar el seguimiento de la cabeza
+                  final look = (value.length / 80.0 * 100.0).clamp(0.0, 100.0);
+                  numLook?.value = look;
 
-                    //3.3 Debounce: si vuelve a escribir, reinicia el timer
-                    if (_typingDebounce?.isActive ?? false) _typingDebounce?.cancel();
-                    _typingDebounce = Timer(const Duration(seconds: 3), () {
-                      if (!mounted){
-                        return;
-                      }
-                      // "Dejó de escribir en email"
-                      isChecking?.change(false);
-                    });
+                  //3.3 Debounce: si vuelve a escribir, reinicia el timer
+                  if (_typingDebounce?.isActive ?? false)
+                    _typingDebounce?.cancel();
+                  _typingDebounce = Timer(const Duration(seconds: 3), () {
+                    if (!mounted) {
+                      return;
+                    }
+                    // "Dejó de escribir en email"
+                    isChecking?.change(false);
+                  });
                   // Si es nulo no intenta cargar la animación
                   if (isChecking == null) return;
                   // Activa el seguimiento de los ojos
@@ -243,16 +298,28 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               // Botón de login
               const SizedBox(height: 10),
-              // Botón estilo Android
+              // Botón estilo Android con estado de carga
               MaterialButton(
                 minWidth: size.width,
                 height: 50,
-                color: Colors.blue,
+                color: _isLoading ? Colors.blue.shade300 : Colors.blue,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                onPressed: _onLogin,
-                child: Text("Login", style: TextStyle(color: Colors.white)),
+                onPressed: _isLoading
+                    ? null
+                    : _onLogin, // Deshabilitar si está cargando
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : const Text("Login",
+                        style: TextStyle(color: Colors.white)),
               ),
               const SizedBox(height: 10),
               SizedBox(
